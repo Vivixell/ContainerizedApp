@@ -40,17 +40,16 @@ docker-compose up --build
 
    This command builds the Docker images and starts the containers.
 
-![Build command](relevant_screenshots\buildCommand.png)
+<img src="relevant_screenshots\buildCommand.png" alt="Build success" width="600">
 
 **Successful build output:**
 
-![Successful Build](relevant_screenshots\buildSucces.png)
+<img src="relevant_screenshots\buildSucces.png" alt="Build success" width="600">
 Access the app
 
 Open your browser and navigate to http://localhost to view the app.
 
-![App interfcae](relevant_screenshots\app.png)
-
+<img src="relevant_screenshots\app.png" alt="Build success" width="600">
 
 ### Notes
 
