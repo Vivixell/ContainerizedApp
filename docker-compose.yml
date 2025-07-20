@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"  
+    depends_on:
+      - backend
+    networks:
+      - victor-net
+
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"  # matches PORT in .env
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+    networks:
+      - victor-net
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - volstore:/var/lib/postgresql/data
+    networks:
+      - victor-net
+
+volumes:
+  volstore:
+
+networks:
+  victor-net:
+    driver: bridge
