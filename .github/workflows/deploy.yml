@@ -2,11 +2,12 @@ name: Deploy to EC2
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["dev"]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,24 +31,22 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           envs: SHA:${{ github.sha }},DOCKER_USERNAME:${{ secrets.DOCKER_USERNAME }}
           script: |
-            # Install Docker if not installed
-            if ! command -v docker &> /dev/null
+            # Install Docker and Compose v2 if not installed
+            if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null
             then
-              echo "Docker not found, installing..."
+              echo "Docker or Compose not found, installing..."
               sudo apt-get update -y
-              sudo apt-get install -y docker.io docker-compose
+              sudo apt-get install -y docker.io docker-compose-plugin
               sudo systemctl enable docker
               sudo systemctl start docker
             else
-              echo "Docker is already installed"
+              echo "Docker and Compose are already installed"
             fi
 
             # Add EC2_USER to Docker group to ensure permissions
             if ! groups ${{ secrets.EC2_USER }} | grep -q docker; then
               echo "Adding ${{ secrets.EC2_USER }} to docker group..."
-              sudo usermod -aG docker ${{ secrets.EC2_USER }}
-              echo "Reconnecting to apply group changes..."
-              newgrp docker || true
+              sudo usermod -aG docker ${{ secrets.EC2_USER }} || echo "Failed to add to docker group, using sudo"
             else
               echo "${{ secrets.EC2_USER }} already in docker group"
             fi
@@ -66,12 +65,12 @@ jobs:
 
             # Stop and remove previous containers to start fresh
             echo "Stopping and removing previous containers..."
-            docker compose down --remove-orphans || true
+            (docker compose down --remove-orphans || sudo docker compose down --remove-orphans) || true
 
             # Pull the latest Docker images
             echo "Pulling latest Docker images..."
-            docker compose pull
+            (docker compose pull || sudo docker compose pull)
 
             # Start containers fresh
             echo "Starting containers..."
-            docker compose up -d
+            (docker compose up -d || sudo docker compose up -d)
