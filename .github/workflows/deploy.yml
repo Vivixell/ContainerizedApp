@@ -65,9 +65,15 @@ jobs:
             # Navigate into the project directory
             cd /home/${{ secrets.EC2_USER }}/dream-vacation
 
-            # Set environment variables for images
+            # Set and verify environment variables for images
             export FRONTEND_IMAGE="$DOCKER_USERNAME/dream-vacation-frontend:$SHA"
             export BACKEND_IMAGE="$DOCKER_USERNAME/dream-vacation-backend:$SHA"
+            echo "FRONTEND_IMAGE=$FRONTEND_IMAGE"
+            echo "BACKEND_IMAGE=$BACKEND_IMAGE"
+            if [ -z "$FRONTEND_IMAGE" ] || [ -z "$BACKEND_IMAGE" ]; then
+              echo "Error: FRONTEND_IMAGE or BACKEND_IMAGE is empty. Check DOCKER_USERNAME and SHA."
+              exit 1
+            fi
 
             # Stop and remove previous containers to start fresh
             echo "Stopping and removing previous containers..."
@@ -75,8 +81,8 @@ jobs:
 
             # Pull the latest Docker images
             echo "Pulling latest Docker images..."
-            (docker compose pull || sudo docker compose pull)
+            (docker compose pull || sudo docker compose pull) || { echo "Failed to pull images"; exit 1; }
 
             # Start containers fresh
             echo "Starting containers..."
-            (docker compose up -d || sudo docker compose up -d)
+            (docker compose up -d || sudo docker compose up -d) || { echo "Failed to start containers"; exit 1; }
