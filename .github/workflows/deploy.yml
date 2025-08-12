@@ -1,0 +1,77 @@
+name: Deploy to EC2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy repository to EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "."
+          target: "/home/${{ secrets.EC2_USER }}/dream-vacation"
+          strip_components: 0
+          rm: true
+
+      - name: Connect to EC2, set up Docker, and deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          envs: SHA:${{ github.sha }},DOCKER_USERNAME:${{ secrets.DOCKER_USERNAME }}
+          script: |
+            # Install Docker if not installed
+            if ! command -v docker &> /dev/null
+            then
+              echo "Docker not found, installing..."
+              sudo apt-get update -y
+              sudo apt-get install -y docker.io docker-compose
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            else
+              echo "Docker is already installed"
+            fi
+
+            # Add EC2_USER to Docker group to ensure permissions
+            if ! groups ${{ secrets.EC2_USER }} | grep -q docker; then
+              echo "Adding ${{ secrets.EC2_USER }} to docker group..."
+              sudo usermod -aG docker ${{ secrets.EC2_USER }}
+              echo "Reconnecting to apply group changes..."
+              newgrp docker || true
+            else
+              echo "${{ secrets.EC2_USER }} already in docker group"
+            fi
+
+            # Create project directory if it doesn't exist
+            if [ ! -d "/home/${{ secrets.EC2_USER }}/dream-vacation" ]; then
+              mkdir -p /home/${{ secrets.EC2_USER }}/dream-vacation
+            fi
+
+            # Navigate into the project directory
+            cd /home/${{ secrets.EC2_USER }}/dream-vacation
+
+            # Set environment variables for images
+            export FRONTEND_IMAGE="$DOCKER_USERNAME/dream-vacation-frontend:$SHA"
+            export BACKEND_IMAGE="$DOCKER_USERNAME/dream-vacation-backend:$SHA"
+
+            # Stop and remove previous containers to start fresh
+            echo "Stopping and removing previous containers..."
+            docker compose down --remove-orphans || true
+
+            # Pull the latest Docker images
+            echo "Pulling latest Docker images..."
+            docker compose pull
+
+            # Start containers fresh
+            echo "Starting containers..."
+            docker compose up -d
