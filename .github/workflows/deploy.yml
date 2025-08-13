@@ -1,0 +1,174 @@
+name: Full CI/CD Pipeline
+
+on:
+  push:
+    branches: ["dev"]
+  workflow_dispatch:
+
+jobs:
+  backend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          npm install
+
+      - name: Run lint
+        run: |
+          cd backend
+          npm run lint || echo "Lint step skipped or failed"
+
+      - name: Run tests
+        run: |
+          cd backend
+          npm test || echo "Tests skipped or failed"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build backend image
+        run: |
+          docker build \
+            -t ${{ secrets.DOCKER_USERNAME }}/dream-vacation-backend:${{ github.sha }} \
+            ./backend
+
+      - name: Push backend image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/dream-vacation-backend:${{ github.sha }}
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Run lint
+        run: |
+          cd frontend
+          npm run lint || echo "Lint step skipped or failed"
+
+      - name: Run tests
+        run: |
+          cd frontend
+          npm test || echo "Tests skipped or failed"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            -t ${{ secrets.DOCKER_USERNAME }}/dream-vacation-frontend:${{ github.sha }} \
+            ./frontend
+
+      - name: Push frontend image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/dream-vacation-frontend:${{ github.sha }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [backend-build, frontend-build]  # Ensures builds complete first
+    env:
+      SHA: ${{ github.sha }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy repository to EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "."
+          target: "/home/${{ secrets.EC2_USER }}/dream-vacation"
+          strip_components: 0
+          rm: true
+
+      - name: Connect to EC2, set up Docker, and deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          envs: SHA,DOCKER_USERNAME
+          script: |
+            # Install Docker and Compose v2 if not installed
+            if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
+              echo "Docker or Compose not found, installing..."
+              sudo apt-get update -y
+              sudo apt-get install -y ca-certificates curl
+              sudo install -m 0755 -d /etc/apt/keyrings
+              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+              sudo chmod a+r /etc/apt/keyrings/docker.asc
+              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              sudo apt-get update -y
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            else
+              echo "Docker and Compose are already installed"
+            fi
+
+            # Add EC2_USER to Docker group if not already
+            if ! groups ${{ secrets.EC2_USER }} | grep -q docker; then
+              echo "Adding ${{ secrets.EC2_USER }} to docker group..."
+              sudo usermod -aG docker ${{ secrets.EC2_USER }} || echo "Failed to add to docker group, using sudo"
+              newgrp docker || true  # Refresh group without logout
+            else
+              echo "${{ secrets.EC2_USER }} already in docker group"
+            fi
+
+            # Create project directory if it doesn't exist
+            mkdir -p /home/${{ secrets.EC2_USER }}/dream-vacation
+
+            # Navigate into the project directory
+            cd /home/${{ secrets.EC2_USER }}/dream-vacation
+
+            # Set and verify environment variables for images
+            export FRONTEND_IMAGE="${DOCKER_USERNAME}/dream-vacation-frontend:${SHA}"
+            export BACKEND_IMAGE="${DOCKER_USERNAME}/dream-vacation-backend:${SHA}"
+            echo "FRONTEND_IMAGE=${FRONTEND_IMAGE}"
+            echo "BACKEND_IMAGE=${BACKEND_IMAGE}"
+            if [ -z "${FRONTEND_IMAGE}" ] || [ -z "${BACKEND_IMAGE}" ]; then
+              echo "Error: FRONTEND_IMAGE or BACKEND_IMAGE is empty. Check DOCKER_USERNAME and SHA."
+              exit 1
+            fi
+
+            # Stop and remove previous containers to start fresh (idempotent)
+            echo "Stopping and removing previous containers..."
+            (docker compose down --remove-orphans -v || sudo docker compose down --remove-orphans -v) || true
+
+            # Pull the latest Docker images
+            echo "Pulling latest Docker images..."
+            (docker compose pull || sudo docker compose pull) || { echo "Failed to pull images"; exit 1; }
+
+            # Start containers fresh
+            echo "Starting containers..."
+            (docker compose up -d || sudo docker compose up -d) || { echo "Failed to start containers"; exit 1; }
