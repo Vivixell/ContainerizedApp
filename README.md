@@ -1,6 +1,6 @@
 # Dream Vacations App
 
-A full-stack, containerized web application for exploring and managing travel destinations.
+A full-stack, containerized web application for exploring and managing travel destinations, deployed on AWS EC2 with a fully automated CI/CD pipeline.
 
 ## Tech Stack
 
@@ -9,6 +9,7 @@ A full-stack, containerized web application for exploring and managing travel de
 - **Database**: PostgreSQL
 - **Containerization**: Docker & Docker Compose
 - **CI/CD**: GitHub Actions
+- **Cloud**: AWS (VPC, EC2)
 
 ## Architecture
 
@@ -23,7 +24,52 @@ Below is the project architecture diagram:
 - Browse and explore dream vacation destinations
 - Persistent storage with PostgreSQL
 - Fully containerized with Docker
-- Automated CI/CD pipeline for building and pushing Docker images
+- Automated CI/CD pipeline for building, pushing, and deploying Docker images to an AWS EC2 instance
+
+## AWS Infrastructure Setup
+
+The application is deployed on an AWS EC2 instance within a custom VPC, configured as follows:
+
+1. **VPC Setup**:
+   - **Name**: dream-vpc
+   - **IPv4 CIDR**: 10.0.0.0/16
+   - **Screenshot**:
+
+<p align="center"><img src="relevant_screenshots/vpc-creation.png" alt="VPC Screenshot" width="800"></p>
+
+2. **Subnet Setup**:
+   - **Name**: dream-subnet
+   - **IPv4 CIDR**: 10.0.1.0/24
+   - **Screenshot**:
+   
+   <p align="center"><img src="relevant_screenshots/subnet.png" alt="Subnet Screenshot" width="800"></p>
+
+3. **Internet Gateway**:
+   - **Name**: dream-igw
+   - **Attached to**: dream-vpc
+   - **Screenshot**: 
+   
+<p align="center"><img src="relevant_screenshots/internet_gateway.png" alt="Internet Gateway Screenshot" width="800"></p>
+
+4. **Route Table**:
+   - **Name**: dream-rt
+   - **Associated with**: dream-vpc and dream-subnet
+   - **Routes**: Includes route to `0.0.0.0/0` via dream-igw for internet access
+   - **Screenshot**: 
+   
+   <p align="center"><img src="relevant_screenshots/route_table2.png" alt="Route Table Screenshot" width="800"></p>
+
+5. **EC2 Instance**:
+   - **AMI**: Ubuntu
+   - **Instance Type**: t2.micro
+   - **Security Group**: Allows inbound traffic on ports 80 (HTTP), 3001 (backend), and 22 (SSH)
+   - **Screenshot**: 
+   
+   <p align="center"><img src="relevant_screenshots/ec2_instance.png" alt="EC2 Instance Screenshot" width="800"></p>
+
+   - **Security Group Screenshot**:
+
+<p align="center"><img src="relevant_screenshots/security_group.png" alt="Security Group Screenshot" width="800"></p>
 
 ## Getting Started
 
@@ -32,67 +78,103 @@ Below is the project architecture diagram:
 - [Docker](https://www.docker.com/get-started) installed
 - [Docker Compose](https://docs.docker.com/compose/install/) installed
 - [Git](https://git-scm.com/downloads) installed
+- AWS account with EC2 instance running (see AWS setup above)
 
-### Installation
+### Local Installation (Optional)
 
 1. **Clone the repository**
    ```bash
    git clone https://github.com/Vivixell/ContainerizedApp.git
    cd ContainerizedApp
-   ```
-2. **Start the app**
+
+2. **Start the app locally**
    ```
    docker-compose up --build
    ```
-   This command builds the Docker images and starts the containers.
+   **This builds the Docker images and starts the containers.**
 
-   <img src="relevant_screenshots/buildCommand.png" alt="Build success" width="600">
+   <img src="relevant_screenshots/buildCommand.png" alt="Build Command" width="600">
+
 
    **Successful build output:**
 
-   <img src="relevant_screenshots/buildSucces.png" alt="Build success" width="600">
+   <img src="relevant_screenshots/buildSucces.png" alt="Build Success" width="600">
+   
+   
+   
+3. **Access the app locally**
 
-3. **Access the app**
-   Open your browser and navigate to **`http://localhost`** to view the app.
+   **Open your browser and navigate to `http://localhost` to view the app.**
 
-   <img src="relevant_screenshots/app.png" alt="Build success" width="600">
 
-4. **Notes:**
-   - Ensure Docker is running before executing `docker-compose up`
+   <img src="relevant_screenshots/app.png" alt="App Running Locally" width="600">
 
-   - Stop containers with `docker-compose down` or use `docker-compose down -v --remove-orphans` to remove persistent volumes.
+
+   **Notes:**
+
+   - Ensure Docker is running before executing docker-compose up.
+   - Stop containers with **`docker-compose down`** or use **`docker-compose down -v --remove-orphans`** to remove persistent volumes.
 
 ---
+
+## Deployment
+
+The app is deployed to an AWS EC2 instance via a GitHub Actions pipeline:
+
+**CI/CD Pipeline:** Builds, tests, and pushes Docker images to Docker Hub, then deploys to EC2 by copying the repository, pulling images, and running docker-compose up.
+
+**Trigger:** Runs on push to the dev branch or manually via GitHub Actions.
+
+Pipeline Logs Screenshot: 
+
+<img src="relevant_screenshots/pipeline_logs.png" alt="Pipeline Logs" width="600">
+
+App Running on EC2: 
+
+<img src="relevant_screenshots/app_ec2.png" alt="App Running on EC2" width="600">
+
+**Secrets Required** (set in `GitHub → Settings → Secrets and variables → Actions`):
+
+**DOCKER_USERNAME:** Your Docker Hub username.
+
+**DOCKER_TOKEN:** Your Docker Hub access token.
+
+**EC2_HOST:** Public IP of your EC2 instance.
+
+**EC2_USER:** SSH user for EC2 (e.g., ubuntu).
+
+**EC2_KEY:** SSH private key for EC2 access.
+
+**Workflow File:**
+
+- **.github/workflows/ci-cd.yml:** Handles building, pushing, and deploying both frontend and backend.
+
+
+**Access the Deployed App:**
+
+- Open your browser and navigate to `http://<EC2_PUBLIC_IP>` to view the app.
+
 ### CI/CD Workflow
 
-This project uses GitHub Actions to automate the build, test, and deployment process.
 
-**Trigger:** 
-- Runs automatically on any push to the dev branch.
+The pipeline automates the following:
 
-- Can also be started manually from the GitHub Actions tab.
+**Backend Build:**
 
-**Pipeline Steps Performed:**
+- Checks out code, installs Node.js, runs lint/tests, builds, and pushes the backend Docker image to Docker Hub.
 
-1. Check out the repository code.
 
-2. Install dependencies for the frontend or backend.
+**Frontend Build:**
 
-3. Run optional lint and test scripts (skipped if not defined).
+- Checks out code, installs Node.js, runs lint/tests, builds, and pushes the frontend Docker image to Docker Hub.
 
-4. Build Docker images for the frontend and backend.
 
-5. Tag images with the current commit SHA for versioning.
+**Deployment:**
 
-6. Push the images to Docker Hub.
+- Copies the repository to the EC2 instance via SCP.
 
-**Secrets Required** (set in **GitHub → Settings → Secrets and variables → Actions**):
+- SSHs into EC2, installs Docker/Compose if needed, sets environment variables, pulls the latest images, and runs docker-compose up.
 
-- **`DOCKER_USERNAME`** → Your Docker Hub username.
 
-- **`DOCKER_TOKEN`** → A Docker Hub access token.
 
-**Workflow Files**
-- **`.github/workflows/frontend.yml`** → Handles building and pushing the frontend image.
-
-- **`.github/workflows/backend.yml`** → Handles building and pushing the backend image.
+The pipeline ensures builds complete before deployment and is idempotent (multiple runs won’t cause errors).
