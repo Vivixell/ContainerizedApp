@@ -6,7 +6,7 @@ variable "vpc_cidr_blocks" {}
 variable "subnet_cidr_blocks" {}
 variable "avail_zone" {}
 variable "instance_type" {}
-variable "public_key_location" {}
+variable "public_key" {}
 
 # User Data Script for EC2
 locals {
@@ -32,8 +32,6 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-c
 EOF
 }
 
-
-
 resource "aws_vpc" "dream-vpc" {
   cidr_block = var.vpc_cidr_blocks
   tags = {
@@ -42,7 +40,7 @@ resource "aws_vpc" "dream-vpc" {
 }
 
 resource "aws_subnet" "dream-subnet" {
-  vpc_id            = aws_vpc.dream-vpc.id
+  vpc_id            = aws_subnet_cidr_blocks
   cidr_block        = var.subnet_cidr_blocks
   availability_zone = var.avail_zone
   tags = {
@@ -105,7 +103,7 @@ resource "aws_security_group" "dream-sg" {
 
 resource "aws_key_pair" "ssh-key" {
   key_name   = "Dream-app-key"
-  public_key = file(var.public_key_location)
+  public_key = var.public_key
 }
 
 data "aws_ami" "latest-Ubuntu-Serve-image" {
@@ -150,7 +148,7 @@ resource "aws_ssm_parameter" "cloudwatch_config" {
   "metrics": {
     "namespace": "DreamApp/EC2",
     "append_dimensions": {
-      "InstanceId": "$${aws:InstanceId}"
+      "InstanceId": "${aws:InstanceId}"
     },
     "metrics_collected": {
       "cpu": {

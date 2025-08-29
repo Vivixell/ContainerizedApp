@@ -115,7 +115,7 @@ jobs:
       - name: Terraform Plan
         run: |
           cd terraform
-          terraform plan -var="public_key_location=${{ secrets.PUBLIC_KEY }}"
+          terraform plan -var="public_key=${{ secrets.PUBLIC_KEY }}"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -123,7 +123,7 @@ jobs:
       - name: Terraform Apply
         run: |
           cd terraform
-          terraform apply -auto-approve -var="public_key_location=${{ secrets.PUBLIC_KEY }}"
+          terraform apply -auto-approve -var="public_key=${{ secrets.PUBLIC_KEY }}"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -148,13 +148,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Wait for EC2 to be reachable
+        run: |
+          for i in {1..30}; do
+            if nc -zv ${{ needs.terraform-deploy.outputs.ec2_public_ip }} 22 2>/dev/null; then
+              echo "EC2 is reachable"
+              exit 0
+            fi
+            echo "Waiting for EC2 to be reachable..."
+            sleep 10
+          done
+          echo "EC2 not reachable after 5 minutes"
+          exit 1
+
       - name: Copy docker-compose.yml and .env files to EC2
         uses: appleboy/scp-action@master
         with:
           host: ${{ needs.terraform-deploy.outputs.ec2_public_ip }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          source: "docker-compose.yml,.env,backend/.env"
+          source: "docker-compose.yml,backend/.env"
           target: "/home/${{ secrets.EC2_USER }}/dream-vacation"
           strip_components: 0
           rm: true
@@ -167,13 +180,25 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           envs: SHA,DOCKER_USERNAME
           script: |
+            # Log in to Docker Hub
+            echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            # Navigate to project directory
             cd /home/${{ secrets.EC2_USER }}/dream-vacation
+
+            # Set environment variables for images
             export FRONTEND_IMAGE="${DOCKER_USERNAME}/dream-vacation-frontend:${SHA}"
             export BACKEND_IMAGE="${DOCKER_USERNAME}/dream-vacation-backend:${SHA}"
             if [ -z "${FRONTEND_IMAGE}" ] || [ -z "${BACKEND_IMAGE}" ]; then
               echo "Error: Image variables empty"
               exit 1
             fi
+
+            # Stop and remove previous containers
             docker compose down --remove-orphans -v || true
+
+            # Pull the latest Docker images
             docker compose pull || { echo "Failed to pull images"; exit 1; }
+
+            # Start containers
             docker compose up -d || { echo "Failed to start containers"; exit 1; }
