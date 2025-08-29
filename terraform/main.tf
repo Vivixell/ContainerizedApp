@@ -22,7 +22,6 @@ variable "vpc_cidr_blocks"   { type = string }
 variable "subnet_cidr_blocks"{ type = string }
 variable "avail_zone"        { type = string }
 variable "instance_type"     { type = string }
-
 variable "public_key"        { type = string }
 
 ########################################
