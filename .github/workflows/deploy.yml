@@ -72,15 +72,16 @@ jobs:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:            us-west-1
+      
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve \
+            -var="public_key=${{ secrets.PUBLIC_KEY }}"
 
       - name: Terraform Apply
         run: |
           terraform apply -auto-approve \
-            -var="vpc_cidr_blocks=10.0.0.0/16" \
-            -var="subnet_cidr_blocks=10.0.1.0/24" \
-            -var="avail_zone=us-west-1b" \
-            -var="instance_type=t2.micro" \
             -var="public_key=${{ secrets.PUBLIC_KEY }}"
+            
         env:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

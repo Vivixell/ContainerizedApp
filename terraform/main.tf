@@ -168,6 +168,7 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 resource "aws_ssm_parameter" "cloudwatch_config" {
   name = "AmazonCloudWatch-DreamAppConfig"
   type = "String"
+  overwrite   = true 
   value = jsonencode({
     agent = {
       metrics_collection_interval = 60
