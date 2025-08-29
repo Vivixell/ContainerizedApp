@@ -65,7 +65,7 @@ jobs:
           terraform plan \
             -var="vpc_cidr_blocks=10.0.0.0/16" \
             -var="subnet_cidr_blocks=10.0.1.0/24" \
-            -var="avail_zone=us-west-1b" \
+            -var="avail_zone=us-west-1a" \
             -var="instance_type=t3.medium" \
             -var="public_key=${{ secrets.PUBLIC_KEY }}"
         env:
@@ -107,9 +107,9 @@ jobs:
         uses: appleboy/scp-action@master
         with:
           host:     ${{ needs.terraform-deploy.outputs.ec2_public_ip }}
-          username: ${{ secrets.EC2_USER }}     # likely "ubuntu"
-          key:      ${{ secrets.EC2_KEY }}      # private key matching PUBLIC_KEY
-          source:   "docker-compose.yml,backend/.env"
+          username: ${{ secrets.EC2_USER }}     
+          key:      ${{ secrets.EC2_KEY }}      
+          source:   "docker-compose.yml,backend/.env,frontend/.env,.env"
           target:   "/home/${{ secrets.EC2_USER }}/dream-vacation"
           strip_components: 0
           rm: true
